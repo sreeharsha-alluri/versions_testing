@@ -1,0 +1,37 @@
+name: Build and Notify
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Extract required packages with formatting
+        id: extract-notifications
+        run: |
+          echo "Running grep to filter packages and format output"
+          # Extract and format notifications, preserving newlines
+          notifications=$(grep -E '^(aianalyzer|device-essentials-phx|device-essentials-strx|flexml|flexml-metadata|microkernel-tiling|onnxruntime-vitisai|ryzen-ai|torch|torch-mlir|torchvision|vai-q-onnx|vaiml|vaitrace|vitis-aie-essentials|vitis_mllib|voe)' ryzenai_pip_list.txt | awk '{$1=$1; print}' ORS='\n')
+          # Debug output to ensure correct format
+          echo "Captured notifications:"
+          echo -e "$notifications"  # Use echo -e to interpret escape sequences
+          # Save the notifications to a file for later use
+          echo -e "$notifications" > notifications.txt  # Save the formatted notifications
+          
+      - name: Notify Teams
+        uses: ./.github/actions/notify_teams
+        with:
+          overall-status: ${{ job.status }}  # Capturing the overall status of the build job
+          run-url: ${{ github.run_url }}
+          action-name: Build
+          workflow-status: ${{ job.status }}  # Status of the workflow
+          workflow-name: ${{ github.workflow }}
+          version-info: |
+            $(cat notifications.txt)
