@@ -1,0 +1,163 @@
+name: Notify Teams
+
+description: Notify Microsoft Teams about the workflow status and package versions.
+
+inputs:
+  overall-status:
+    description: 'Overall status of the build job'
+    required: true
+  run-url:
+    description: 'URL of the workflow run'
+    required: true
+  action-name:
+    description: 'Name of the action'
+    required: true
+  workflow-status:
+    description: 'Status of the workflow'
+    required: true
+  workflow-name:
+    description: 'Name of the workflow'
+    required: true
+  version-info:
+    description: 'Package version information'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Prepare and Send Notification
+      shell: bash
+      run: |
+        # Debug input values
+        echo "Overall Status: ${{ inputs.overall-status }}"
+        echo "Run URL: ${{ inputs.run-url }}"
+        echo "Action Name: ${{ inputs.action-name }}"
+        echo "Workflow Status: ${{ inputs.workflow-status }}"
+        echo "Workflow Name: ${{ inputs.workflow-name }}"
+        echo "Version Info: ${{ inputs.version-info }}"  # Debugging the input
+
+        # Check if version-info is empty
+        if [ -z "${{ inputs.version-info }}" ]; then
+          echo "Error: Version info is empty!"
+          exit 1  # Exit with an error if version-info is empty
+        fi
+
+        # Prepare rows for each package in the version info
+        package_rows=""
+        while read -r line; do
+          package=$(echo "$line" | awk '{print $1}')
+          version=$(echo "$line" | awk '{print $2}')
+          package_rows+="{
+            \"type\": \"ColumnSet\",
+            \"columns\": [
+              {
+                \"type\": \"Column\",
+                \"width\": \"stretch\",
+                \"items\": [
+                  {
+                    \"type\": \"TextBlock\",
+                    \"text\": \"$package\",
+                    \"wrap\": true
+                  }
+                ]
+              },
+              {
+                \"type\": \"Column\",
+                \"width\": \"stretch\",
+                \"items\": [
+                  {
+                    \"type\": \"TextBlock\",
+                    \"text\": \"$version\",
+                    \"wrap\": true
+                  }
+                ]
+              }
+            ]
+          },"
+        done <<< "${{ inputs.version-info }}"
+
+        # Remove trailing comma if present
+        package_rows=${package_rows%,}
+
+        # Set the workflow status color and icon based on overall status
+        if [ "${{ inputs.overall-status }}" == "success" ]; then
+          status_color="good"       # Green color for success
+          status_icon="✅"          # Tick mark for success
+          status_text="Success"
+        else
+          status_color="attention"  # Red color for failure
+          status_icon="❌"          # Cross for failure
+          status_text="Failure"
+        fi
+
+        # Prepare the JSON payload
+        message_body="{
+          \"type\": \"message\",
+          \"attachments\": [{
+            \"contentType\": \"application/vnd.microsoft.card.adaptive\",
+            \"content\": {
+              \"type\": \"AdaptiveCard\",
+              \"version\": \"1.2\",
+              \"body\": [
+                {
+                  \"type\": \"TextBlock\",
+                  \"text\": \"**Workflow Name:** ${{ inputs.workflow-name }}\",
+                  \"wrap\": true
+                },
+                {
+                  \"type\": \"TextBlock\",
+                  \"text\": \"Workflow Status: $status_text $status_icon\",
+                  \"wrap\": true,
+                  \"color\": \"$status_color\"
+                },
+                {
+                  \"type\": \"TextBlock\",
+                  \"text\": \"**Package Version Information:**\",
+                  \"wrap\": true
+                },
+                {
+                  \"type\": \"ColumnSet\",
+                  \"columns\": [
+                    {
+                      \"type\": \"Column\",
+                      \"width\": \"stretch\",
+                      \"items\": [
+                        {
+                          \"type\": \"TextBlock\",
+                          \"text\": \"Package\",
+                          \"weight\": \"Bolder\"
+                        }
+                      ]
+                    },
+                    {
+                      \"type\": \"Column\",
+                      \"width\": \"stretch\",
+                      \"items\": [
+                        {
+                          \"type\": \"TextBlock\",
+                          \"text\": \"Version\",
+                          \"weight\": \"Bolder\"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                $package_rows
+              ],
+              \"msteams\": {
+                \"width\": \"Full\"
+              },
+              \"actions\": [{
+                \"type\": \"Action.OpenUrl\",
+                \"title\": \"View Run\",
+                \"url\": \"${{ inputs.run-url }}\"
+              }]
+            }
+          }]
+        }"
+
+        # Debug output to inspect message_body
+        echo "Message Body: $message_body"
+
+        # Send the notification
+        curl -H 'Content-Type: application/json' -d "$message_body" "https://amdcloud.webhook.office.com/webhookb2/133d4f16-689b-4281-a94b-44725b948c77@3dd8961f-e488-4e60-8e11-a82d994e183d/IncomingWebhook/6ce8d9a78c0c48c188aac0e28bb8e63c/f4453ec5-087a-4294-9c4e-e643270504ff/V22WslDqZZOIe0zvHdhnprCngiBU4xkF5VJkqJzSQbnm01"
